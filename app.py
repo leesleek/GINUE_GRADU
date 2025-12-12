@@ -11,7 +11,7 @@ import re
 # --- [1. 기본 설정 및 제목] ---
 st.set_page_config(page_title="경인교육대학교 대학원 규정 챗봇", page_icon="🎓")
 
-# 제목 스타일 조정 (가운데 정렬 + 크기 조절)
+# 제목 스타일
 st.markdown(
     """
     <h1 style='text-align: center; font-size: 36px; margin-bottom: 30px;'>
@@ -21,16 +21,27 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- [사이드바: 라이센스 표기 (요청하신 부분)] ---
+# --- [기능 추가: 대화 초기화 함수] ---
+def clear_chat_history():
+    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요! 대학원 규정에 대해 무엇이든 물어보세요."}]
+
+# --- [사이드바 설정] ---
 with st.sidebar:
+    # 1. 새로운 채팅 버튼
+    if st.button("🔄 새로운 대화 시작", type="primary", use_container_width=True):
+        clear_chat_history()
+        st.rerun()
+        
+    st.markdown("---")
+
+    # 2. 정보 및 라이센스
     st.header("정보")
     st.info("이 챗봇은 경인교육대학교 대학원 규정 PDF 문서를 기반으로 답변합니다.")
     
-    # 하단 공백 추가 (디자인상 아래로 밀어내기)
-    st.markdown("<br>" * 10, unsafe_allow_html=True) 
+    st.markdown("<br>" * 8, unsafe_allow_html=True)
     st.markdown("---")
     
-    # 라이센스 및 저작자 표기
+    # 라이센스 표기
     st.markdown(
         """
         <div style='text-align: center; color: grey; font-size: 12px;'>
@@ -46,7 +57,6 @@ with st.sidebar:
 @st.cache_resource
 def init_clients():
     try:
-        # Streamlit Secrets에서 API 키 로드
         co = cohere.Client(st.secrets["COHERE_API_KEY"])
         openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         chroma_client = chromadb.Client()
@@ -62,7 +72,6 @@ co, openai_client, chroma_client = init_clients()
 def load_and_index_pdfs():
     collection_name = "pdf_knowledge_base"
     
-    # 기존 컬렉션 초기화 (데이터 갱신용)
     try:
         chroma_client.delete_collection(collection_name)
     except:
@@ -70,6 +79,7 @@ def load_and_index_pdfs():
         
     collection = chroma_client.create_collection(name=collection_name)
     
+    # [수정됨] 폴더 경로를 'gradu_data'로 변경
     pdf_files = glob.glob("gradu_data/*.pdf")
     if not pdf_files:
         st.warning("⚠️ 'gradu_data' 폴더에 PDF 파일이 없습니다.")
@@ -78,7 +88,6 @@ def load_and_index_pdfs():
     status_text = st.empty()
     status_text.info("📚 문서를 분석하고 있습니다... 잠시만 기다려 주세요.")
 
-    # 청크 설정 (요청 사항 반영)
     text_splitter = RecursiveCharacterTextSplitter(
         separators=["\n\n", "\n", " ", ""],
         chunk_size=1024,
@@ -97,7 +106,6 @@ def load_and_index_pdfs():
                 text = page.extract_text()
                 if text: full_text += text + "\n"
             
-            # 텍스트 정제
             full_text = re.sub(r'\n{3,}', '\n\n', full_text)
             
             chunks = text_splitter.split_text(full_text)
@@ -107,7 +115,6 @@ def load_and_index_pdfs():
         except Exception as e:
             st.warning(f"{file_path} 처리 중 오류 발생: {e}")
 
-    # 임베딩 및 저장
     batch_size = 100
     for i in range(0, len(all_chunks), batch_size):
         batch_texts = all_chunks[i:i+batch_size]
@@ -130,7 +137,6 @@ def load_and_index_pdfs():
     status_text.success(f"✅ 총 {len(pdf_files)}개의 규정 문서 학습 완료!")
     return collection
 
-# 앱 실행 시 지식베이스 로드
 if openai_client:
     collection = load_and_index_pdfs()
 
@@ -155,7 +161,7 @@ if prompt := st.chat_input("질문을 입력하세요..."):
             st.error("지식베이스가 로드되지 않았습니다.")
             st.stop()
 
-        # 1. 임베딩 & 검색 (Vector Search)
+        # 1. 검색
         query_embed = openai_client.embeddings.create(
             input=[prompt],
             model="text-embedding-3-small"
@@ -171,7 +177,7 @@ if prompt := st.chat_input("질문을 입력하세요..."):
             st.session_state.messages.append({"role": "assistant", "content": full_response})
             st.stop()
 
-        # 2. Rerank (Cohere)
+        # 2. Rerank
         rerank_results = co.rerank(
             query=prompt,
             documents=retrieved_docs,
@@ -188,7 +194,7 @@ if prompt := st.chat_input("질문을 입력하세요..."):
         context = "\n\n".join(final_docs)
         source_text = ", ".join(sources)
 
-        # 3. LLM 생성 (OpenAI) - 프롬프트 적용
+        # 3. 답변 생성
         system_prompt = f"""
         당신은 경인교육대학교 대학원 규정 안내 AI입니다.
         아래의 [컨텍스트]와 [참고 문서 목록]을 바탕으로 사용자의 질문에 답변하세요.

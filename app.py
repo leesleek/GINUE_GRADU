@@ -9,13 +9,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 import re
 
 # --- [1. 기본 설정 및 제목] ---
-st.set_page_config(page_title="경인교육대학교 대학원 규정 챗봇", page_icon="🎓")
+st.set_page_config(page_title="경인교육대학교 교육전문대학원 규정 챗봇", page_icon="🎓")
 
 # 제목 스타일
 st.markdown(
     """
     <h1 style='text-align: center; font-size: 36px; margin-bottom: 30px;'>
-        🎓 경인교육대학교 대학원 규정 안내 AI
+        🎓 경인교육대학교 교육전문대학원 규정 안내 AI
     </h1>
     """, 
     unsafe_allow_html=True
